@@ -198,7 +198,13 @@ matching its destination directory, with whatever new imports that requires.
 against the example app's generated Android project. Only pre-existing
 upstream deprecation warnings surface (`SpeedChangeEffect`,
 `EditedMediaItemSequence.Builder(vararg)`, `Movie`) — none introduced by the
-port. Nothing has been exercised at runtime yet.
+port.
+
+**Verified at runtime** on an Android emulator (API 36, Pixel 7) via the same
+smoke-test screen used for iOS: download a small public clip, `render()` a
+3-second trim, resolve real output bytes (~1.08MB from the same 5s/1.1MB
+source). This caught a real bug on the first attempt — see the module glue
+section below.
 
 ## Android module glue (JS-callable)
 
@@ -219,15 +225,26 @@ made on iOS, rather than re-modeling `RenderConfig`'s shape as a second
 parallel tree of Expo `Record` structs.
 
 **Verified**: compiles clean as part of the same
-`:expo-pro-video-editor:compileDebugKotlin` build. Nothing has been exercised
-at runtime yet (no example-app screen calls `render` on Android yet — the
-existing smoke-test screen only targets iOS so far).
+`:expo-pro-video-editor:compileDebugKotlin` build, and confirmed working at
+runtime (see above) after one fix: Expo Modules API dispatches an
+`AsyncFunction` on a background queue by default, but Media3's `Transformer`
+requires every call — including `addListener`, invoked from `RenderVideo`'s
+own main-Looper `post` — on the exact thread that created it. Building the
+`Transformer` on the default background queue crashed the first render with
+`IllegalStateException: Transformer is accessed on the wrong thread` the
+moment the main-thread callback touched it. Fixed by chaining
+`.runOnQueue(Queues.MAIN)` onto both `AsyncFunction`s so the whole call stays
+on the single thread Media3 expects throughout — see the `fix(android)`
+commit for detail. No equivalent issue exists on iOS: `AVFoundation`'s
+`Transformer`-equivalent objects aren't thread-affine the same way, and the
+Expo Modules API's Swift side already runs `AsyncFunction` bodies
+consistently.
 
 ## Remaining work
 
 The TS-facing API surface for anything beyond trim/basic effects (filters,
 image/text overlays, audio mixing, transitions) is modeled in `RenderConfig`
 on both platforms already and compiles, but only the trim path has been
-exercised at runtime so far (iOS only) — filters, image layers, audio mixing,
-and transitions are still untested end-to-end on either platform, and nothing
-has been runtime-tested on Android at all yet.
+exercised at runtime so far on either platform — filters, image layers, audio
+mixing, and transitions are still untested end-to-end on iOS and Android
+alike.
