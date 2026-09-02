@@ -1,0 +1,501 @@
+import AVFoundation
+import Foundation
+
+/// Renders a composition through AVAssetReader → AVAssetWriter so the
+/// requested video bitrate is actually enforced.
+///
+/// `AVAssetExportSession` presets pick their own bitrate (a 1080p preset
+/// encodes at 10-16 Mbit/s regardless of the request), so a bitrate cap can
+/// only be honored by writing the video track ourselves with
+/// `AVVideoAverageBitRateKey` — the same pattern `StopMotionGenerator` uses.
+///
+/// The reader consumes the composed frames via
+/// `AVAssetReaderVideoCompositionOutput`, so the full `AVVideoComposition`
+/// (custom compositor with filters/blur/layers/transitions, frame-rate cap,
+/// render size) and the `AVAudioMix` (track volumes/fades) behave exactly as
+/// they do in the export-session path.
+internal enum BitrateCappedExporter {
+
+  /// Serializes every reader/writer touch against the one teardown that
+  /// invalidates them.
+  ///
+  /// `onCancel` runs on the cancelling task's thread while the sample pumps run
+  /// on their own queues, so a bare cancellation flag only narrows the window —
+  /// the teardown still lands *inside* a pump operation. Two ways that crashes,
+  /// both seen in the field:
+  ///
+  /// - `AVAssetReader.cancelReading` tearing the reader down while a pump sits
+  ///   in `copyNextSampleBuffer` faults inside AVFoundation (`EXC_BAD_ACCESS`).
+  /// - Arming or finishing an input after `AVAssetWriter.cancelWriting` raises
+  ///   `NSInternalInconsistencyException` ("Cannot call method when status is
+  ///   4", i.e. `.cancelled`).
+  ///
+  /// Routing both sides through this gate means a teardown can only ever land
+  /// *between* whole operations. Contention stays cheap: a pump holds the gate
+  /// for a single `copyNextSampleBuffer` / `append`, and a pump waiting on a
+  /// wedged encoder has already returned (`isReadyForMoreMediaData` went false
+  /// and the block is simply not re-invoked), so it holds nothing while a
+  /// cancel tears down. The lock is recursive so that arming — which runs
+  /// inside the gate — cannot deadlock if AVFoundation ever invokes the pump
+  /// block on the arming thread.
+  private final class SessionGate {
+    private let lock = NSRecursiveLock()
+    private var ended = false
+
+    /// Runs [body] while the session is live, or returns [fallback] once it has
+    /// ended. The fallback doubles as the pump's "nothing more to do" answer,
+    /// so a pump that loses the race to a cancel drains instead of touching a
+    /// torn-down reader or writer.
+    func whileLive<T>(or fallback: T, _ body: () -> T) -> T {
+      lock.lock()
+      defer { lock.unlock() }
+      guard !ended else { return fallback }
+      return body()
+    }
+
+    /// [whileLive(or:_:)] for teardown-sensitive calls with no result.
+    func whileLive(_ body: () -> Void) {
+      whileLive(or: ()) { body() }
+    }
+
+    /// Ends the session exactly once. Returns `true` only for the caller that
+    /// actually ended it, so exactly one owns the teardown and a second cancel
+    /// cannot repeat it.
+    ///
+    /// Taking the lock is what makes the teardown that follows safe: a gated
+    /// operation already in flight must release the lock before this can set
+    /// the flag, and no later one can start once it is set. By the time this
+    /// returns `true`, nothing is touching the reader or writer — so the winner
+    /// tears them down *after* this returns, without holding the lock across
+    /// AVFoundation calls.
+    @discardableResult
+    func end() -> Bool {
+      lock.lock()
+      defer { lock.unlock() }
+      guard !ended else { return false }
+      ended = true
+      return true
+    }
+  }
+
+  /// Completes a `CheckedContinuation` exactly once, from whichever of the
+  /// normal completion path (`group.notify`) or the cancellation handler fires
+  /// first.
+  ///
+  /// The cancellation handler needs this because a writer-input pump parked on a
+  /// wedged encoder never calls `group.leave()`, so `group.notify` would never
+  /// fire and the task would hang forever — holding the process-wide export
+  /// gate. Resuming from `onCancel` unwinds it instead.
+  private final class ContinuationTerminator {
+    private let lock = NSLock()
+    private var cont: CheckedContinuation<Void, Error>?
+    private var pending: Result<Void, Error>?
+    private var finished = false
+
+    /// Registers the continuation. If [finish] already ran (the task was
+    /// cancelled before the continuation body executed), resumes it at once.
+    func attach(_ continuation: CheckedContinuation<Void, Error>) {
+      lock.lock()
+      if finished, let pending = pending {
+        self.pending = nil
+        lock.unlock()
+        continuation.resume(with: pending)
+      } else {
+        cont = continuation
+        lock.unlock()
+      }
+    }
+
+    /// Resumes the continuation once; later calls are ignored. Returns `true`
+    /// only for the call that actually completed it, so the winner can own any
+    /// side effects (e.g. deleting the partial output) without a late cancel
+    /// clobbering an already-succeeded export.
+    @discardableResult
+    func finish(_ result: Result<Void, Error>) -> Bool {
+      lock.lock()
+      if finished {
+        lock.unlock()
+        return false
+      }
+      finished = true
+      let continuation = cont
+      cont = nil
+      if continuation == nil { pending = result }
+      lock.unlock()
+      continuation?.resume(with: result)
+      return true
+    }
+  }
+
+  /// Exports [asset] to [outputURL], encoding video as H.264 with
+  /// `AVVideoAverageBitRateKey` set to [videoBitrate] and audio as AAC.
+  ///
+  /// - Parameters:
+  ///   - asset: The (composed) asset to render.
+  ///   - videoComposition: Video composition applied while reading frames.
+  ///   - audioMix: Optional audio mix applied while reading audio.
+  ///   - outputURL: Destination file (replaced if it exists).
+  ///   - fileType: Output container type (.mp4 / .mov).
+  ///   - videoBitrate: Target average video bitrate in bits per second.
+  ///   - timeRange: Optional global trim range, in asset time.
+  ///   - optimizeForNetworkUse: Writes the moov atom at the front when true.
+  ///   - onProgress: Called with progress in 0.0...0.99 while encoding.
+  ///
+  /// Cancellation: responds to task cancellation (the render job handle
+  /// cancels the surrounding task); the partial output file is removed.
+  static func export(
+    asset: AVAsset,
+    videoComposition: AVVideoComposition,
+    audioMix: AVAudioMix?,
+    outputURL: URL,
+    fileType: AVFileType,
+    videoBitrate: Int,
+    timeRange: CMTimeRange?,
+    optimizeForNetworkUse: Bool,
+    onProgress: @escaping (Double) -> Void
+  ) async throws {
+    let videoTracks = try await loadTracks(from: asset, mediaType: .video)
+    guard !videoTracks.isEmpty else {
+      throw error(1, "No video tracks to export")
+    }
+    let audioTracks = try await loadTracks(from: asset, mediaType: .audio)
+
+    // The writer refuses to overwrite an existing file.
+    try? FileManager.default.removeItem(at: outputURL)
+
+    // Reader: composed video frames + mixed audio.
+    let reader = try AVAssetReader(asset: asset)
+    if let timeRange = timeRange {
+      reader.timeRange = timeRange
+    }
+
+    let videoOutput = AVAssetReaderVideoCompositionOutput(
+      videoTracks: videoTracks,
+      videoSettings: [
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+      ])
+    videoOutput.videoComposition = videoComposition
+    videoOutput.alwaysCopiesSampleData = false
+    guard reader.canAdd(videoOutput) else {
+      throw error(2, "Cannot add video composition output to reader")
+    }
+    reader.add(videoOutput)
+
+    // Writer: H.264 at the requested bitrate, AAC audio.
+    let writer = try AVAssetWriter(outputURL: outputURL, fileType: fileType)
+    writer.shouldOptimizeForNetworkUse = optimizeForNetworkUse
+
+    let width = evenDimension(videoComposition.renderSize.width)
+    let height = evenDimension(videoComposition.renderSize.height)
+    let videoSettings: [String: Any] = [
+      AVVideoCodecKey: AVVideoCodecType.h264,
+      AVVideoWidthKey: width,
+      AVVideoHeightKey: height,
+      AVVideoCompressionPropertiesKey: [
+        AVVideoAverageBitRateKey: videoBitrate,
+        // Disable B-frames. Frame reordering forces a composition-time offset
+        // (ctts / an edit list) and a decoder reorder buffer that must be
+        // flushed and refilled at every loop restart. On short looped clips
+        // that refill intermittently starves AVPlayerItemVideoOutput — the
+        // player delivers no frame for a whole loop while audio keeps playing.
+        // An all-P-frame stream decodes linearly and loops cleanly.
+        AVVideoAllowFrameReorderingKey: false,
+        // Keep keyframes frequent so a loop seek to zero (and any scrub) lands
+        // on or near an IDR instead of decoding a long GOP first.
+        AVVideoMaxKeyFrameIntervalDurationKey: 1.0,
+      ],
+    ]
+    let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+    videoInput.expectsMediaDataInRealTime = false
+    guard writer.canAdd(videoInput) else {
+      throw error(3, "Cannot add video input to writer")
+    }
+    writer.add(videoInput)
+
+    // Audio: read the mixed tracks as interleaved LPCM downmixed to at most
+    // stereo (an explicit channel layout makes the reader downmix >2-channel
+    // surround sources deterministically), then re-encode to AAC. The reader
+    // output and writer input are only added once BOTH are confirmed, so a
+    // rejected writer input never leaves an undrained output on the reader.
+    var audioOutput: AVAssetReaderAudioMixOutput?
+    var audioInput: AVAssetWriterInput?
+    if !audioTracks.isEmpty {
+      let format = await audioFormat(for: audioTracks.first)
+      let output = AVAssetReaderAudioMixOutput(
+        audioTracks: audioTracks, audioSettings: readerLPCMSettings(format))
+      output.audioMix = audioMix
+      output.alwaysCopiesSampleData = false
+      let input = AVAssetWriterInput(
+        mediaType: .audio, outputSettings: writerAACSettings(format))
+      input.expectsMediaDataInRealTime = false
+      if reader.canAdd(output) && writer.canAdd(input) {
+        reader.add(output)
+        writer.add(input)
+        audioOutput = output
+        audioInput = input
+      } else {
+        PluginLog.print("⚠️ Cannot wire audio reader/writer - exporting video only")
+      }
+    }
+
+    // Progress is derived from the video PTS against the exported duration.
+    let assetDuration: CMTime
+    if #available(iOS 15.0, macOS 13.0, *) {
+      assetDuration = try await asset.load(.duration)
+    } else {
+      assetDuration = asset.duration
+    }
+    let exportStart = timeRange?.start ?? .zero
+    let totalSeconds = CMTimeGetSeconds(timeRange?.duration ?? assetDuration)
+
+    guard reader.startReading() else {
+      throw reader.error ?? error(4, "AVAssetReader.startReading failed")
+    }
+    guard writer.startWriting() else {
+      reader.cancelReading()
+      throw writer.error ?? error(5, "AVAssetWriter.startWriting failed")
+    }
+    writer.startSession(atSourceTime: exportStart)
+
+    let session = SessionGate()
+    let terminator = ContinuationTerminator()
+
+    try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+        terminator.attach(cont)
+        let group = DispatchGroup()
+
+        pump(
+          input: videoInput, output: videoOutput, group: group,
+          queue: DispatchQueue(label: "dev.expo.provideoeditor.bitrate_export.video"),
+          session: session
+        ) { sample in
+          guard totalSeconds > 0 else { return }
+          let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+          let seconds = CMTimeGetSeconds(CMTimeSubtract(pts, exportStart))
+          // Reserve 1.0 for after finishWriting, like the export-session path.
+          onProgress(min(max(seconds / totalSeconds, 0), 0.99))
+        }
+
+        if let audioInput = audioInput, let audioOutput = audioOutput {
+          pump(
+            input: audioInput, output: audioOutput, group: group,
+            queue: DispatchQueue(label: "dev.expo.provideoeditor.bitrate_export.audio"),
+            session: session,
+            onSample: nil)
+        }
+
+        group.notify(queue: DispatchQueue(label: "dev.expo.provideoeditor.bitrate_export.done")) {
+          // A cancel that got here first already tore the session down and
+          // finished the continuation from `onCancel`; `end` then returns false
+          // and every `terminator.finish` below is a no-op.
+          if reader.status == .failed {
+            if session.end() {
+              writer.cancelWriting()
+              try? FileManager.default.removeItem(at: outputURL)
+            }
+            terminator.finish(.failure(reader.error ?? error(6, "Reading composed frames failed")))
+            return
+          }
+          if writer.status == .failed {
+            if session.end() {
+              reader.cancelReading()
+              try? FileManager.default.removeItem(at: outputURL)
+            }
+            terminator.finish(.failure(writer.error ?? error(7, "Writing encoded samples failed")))
+            return
+          }
+          // Finalizing owns the writer from here: `cancelWriting` concurrent
+          // with `finishWriting` is not safe, so take the session before
+          // starting it. Losing that race means a cancel already tore the
+          // writer down and unwound the task, so there is nothing to finalize.
+          guard session.end() else { return }
+          writer.finishWriting {
+            if writer.status == .completed {
+              terminator.finish(.success(()))
+            } else {
+              try? FileManager.default.removeItem(at: outputURL)
+              terminator.finish(
+                .failure(
+                  writer.error
+                    ?? error(8, "Writer finished with status \(writer.status.rawValue)")))
+            }
+          }
+        }
+      }
+    } onCancel: {
+      // Ending the session stops the pumps (their next gated step returns the
+      // "done" fallback) and guarantees none is mid-operation, so the teardown
+      // below cannot land inside one. Complete the continuation directly too —
+      // a pump parked on a wedged encoder (isReadyForMoreMediaData stuck false)
+      // is never re-invoked to observe the cancel, so group.notify would never
+      // fire and the task would hang holding the export gate. Only delete the
+      // output if this cancel actually won the race (the export hadn't already
+      // finished successfully).
+      if session.end() {
+        reader.cancelReading()
+        writer.cancelWriting()
+      }
+      if terminator.finish(.failure(CancellationError())) {
+        try? FileManager.default.removeItem(at: outputURL)
+      }
+    }
+  }
+
+  // MARK: - Sample pumping
+
+  /// Copies samples from [output] into [input] on [queue] until the source is
+  /// drained, an append fails, or [session] ends. Calls `group.leave()` exactly
+  /// once when this track is done.
+  ///
+  /// Every reader/writer call goes through [session], so a cancel racing this
+  /// pump can only land between whole operations — see ``SessionGate``.
+  private static func pump(
+    input: AVAssetWriterInput,
+    output: AVAssetReaderOutput,
+    group: DispatchGroup,
+    queue: DispatchQueue,
+    session: SessionGate,
+    onSample: ((CMSampleBuffer) -> Void)?
+  ) {
+    group.enter()
+    var finished = false  // Confined to [queue]; guards double-leave.
+
+    // Arming is gated too: `requestMediaDataWhenReady` on an input whose writer
+    // was already cancelled raises "Cannot call method when status is 4".
+    let armed = session.whileLive(or: false) {
+      input.requestMediaDataWhenReady(on: queue) {
+        while input.isReadyForMoreMediaData {
+          if finished { return }
+
+          // `nil` covers both "source drained" and "the session ended under
+          // us"; `false` from the append covers both "writer moved to .failed"
+          // (surfaced after both pumps stop) and the same lost race. Every one
+          // of them means this track is done.
+          let sample: CMSampleBuffer? = session.whileLive(or: nil) {
+            output.copyNextSampleBuffer()
+          }
+          if let sample, session.whileLive(or: false, { input.append(sample) }) {
+            onSample?(sample)
+            continue
+          }
+
+          finished = true
+          session.whileLive { input.markAsFinished() }
+          group.leave()
+          return
+        }
+      }
+      return true
+    }
+
+    // The session ended before this pump was ever armed, so the block will
+    // never run: balance the `enter` here instead.
+    if !armed { group.leave() }
+  }
+
+  // MARK: - Helpers
+
+  private static func loadTracks(
+    from asset: AVAsset, mediaType: AVMediaType
+  ) async throws -> [AVAssetTrack] {
+    if #available(iOS 15.0, macOS 13.0, *) {
+      return try await asset.loadTracks(withMediaType: mediaType)
+    } else {
+      return asset.tracks(withMediaType: mediaType)
+    }
+  }
+
+  /// The decoded audio format the reader delivers and the writer encodes.
+  ///
+  /// [channels] is clamped to at most stereo and [sampleRate] to what AAC
+  /// accepts. A mono source stays mono; stereo and any surround layout
+  /// (5.1, 7.1, …) resolve to stereo, and the reader is given an explicit
+  /// channel layout ([readerLPCMSettings]) so it performs the downmix
+  /// deterministically instead of leaving multichannel reduction to the AAC
+  /// encoder (whose implicit behavior varies by OS version).
+  private struct AudioFormat {
+    let sampleRate: Double
+    let channels: Int
+  }
+
+  private static func audioFormat(for track: AVAssetTrack?) async -> AudioFormat {
+    var sampleRate = 44_100.0
+    var channels = 2
+
+    if let track = track {
+      let formatDescriptions: [Any]
+      if #available(iOS 15.0, macOS 13.0, *) {
+        formatDescriptions = (try? await track.load(.formatDescriptions)) ?? []
+      } else {
+        formatDescriptions = track.formatDescriptions
+      }
+      for description in formatDescriptions {
+        let formatDesc = description as! CMFormatDescription
+        if let basic = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) {
+          if basic.pointee.mSampleRate > 0 {
+            sampleRate = basic.pointee.mSampleRate
+          }
+          if basic.pointee.mChannelsPerFrame > 0 {
+            channels = Int(basic.pointee.mChannelsPerFrame)
+          }
+          break
+        }
+      }
+    }
+
+    return AudioFormat(
+      sampleRate: sampleRate > 48_000 ? 48_000 : sampleRate,
+      channels: min(max(channels, 1), 2))
+  }
+
+  /// Interleaved 16-bit LPCM reader settings at [format]. The explicit
+  /// channel count plus [channelLayoutData] make `AVAssetReaderAudioMixOutput`
+  /// downmix a >2-channel source to the target layout up front, rather than
+  /// vending the source channel count and leaving the downmix to the AAC
+  /// encoder.
+  private static func readerLPCMSettings(_ format: AudioFormat) -> [String: Any] {
+    return [
+      AVFormatIDKey: kAudioFormatLinearPCM,
+      AVSampleRateKey: format.sampleRate,
+      AVNumberOfChannelsKey: format.channels,
+      AVChannelLayoutKey: channelLayoutData(channels: format.channels),
+      AVLinearPCMBitDepthKey: 16,
+      AVLinearPCMIsFloatKey: false,
+      AVLinearPCMIsBigEndianKey: false,
+      AVLinearPCMIsNonInterleaved: false,
+    ]
+  }
+
+  /// AAC writer settings matching the reader's LPCM channel count/sample rate.
+  private static func writerAACSettings(_ format: AudioFormat) -> [String: Any] {
+    return [
+      AVFormatIDKey: kAudioFormatMPEG4AAC,
+      AVSampleRateKey: format.sampleRate,
+      AVNumberOfChannelsKey: format.channels,
+      AVEncoderBitRateKey: 128_000,
+    ]
+  }
+
+  /// Encodes a mono or stereo `AudioChannelLayout` as `Data` for
+  /// `AVChannelLayoutKey`.
+  private static func channelLayoutData(channels: Int) -> Data {
+    var layout = AudioChannelLayout()
+    layout.mChannelLayoutTag =
+      channels == 1 ? kAudioChannelLayoutTag_Mono : kAudioChannelLayoutTag_Stereo
+    return Data(bytes: &layout, count: MemoryLayout<AudioChannelLayout>.size)
+  }
+
+  /// Rounds a render dimension to the nearest even integer (H.264
+  /// requirement), with a minimum of 2.
+  private static func evenDimension(_ value: CGFloat) -> Int {
+    let rounded = Int(value.rounded())
+    return max(2, rounded - (rounded % 2))
+  }
+
+  private static func error(_ code: Int, _ message: String) -> NSError {
+    return NSError(
+      domain: "BitrateCappedExporter", code: code,
+      userInfo: [NSLocalizedDescriptionKey: message])
+  }
+}

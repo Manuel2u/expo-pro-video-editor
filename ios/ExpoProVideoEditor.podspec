@@ -1,10 +1,11 @@
 Pod::Spec.new do |s|
   s.name           = 'ExpoProVideoEditor'
   s.version        = '1.0.0'
-  s.summary        = 'A sample project summary'
-  s.description    = 'A sample project description'
-  s.author         = ''
-  s.homepage       = 'https://docs.expo.dev/modules/'
+  s.summary        = 'Native video composition (trim, filters, overlays, audio mixing) for Expo'
+  s.description    = 'Native video composition for Expo/React Native, adapted from pro_video_editor.'
+  s.author         = 'manuel2u'
+  s.homepage       = 'https://github.com/Manuel2u/expo-pro-video-editor'
+  s.license        = { type: 'BSD-3-Clause', file: '../LICENSE' }
   s.platforms      = {
     :ios => '16.4',
     :tvos => '16.4'
