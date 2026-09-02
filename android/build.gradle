@@ -11,8 +11,25 @@ android {
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
+    minSdk 24
   }
   lintOptions {
     abortOnError false
   }
+}
+
+dependencies {
+  def media3_version = "1.10.1"
+  implementation "androidx.media3:media3-common:$media3_version"
+  implementation "androidx.media3:media3-transformer:$media3_version"
+  implementation "androidx.media3:media3-effect:$media3_version"
+  implementation "androidx.media3:media3-muxer:$media3_version"
+
+  // EXIF metadata for image-overlay orientation (ImageOrientation.kt).
+  // Preferred over android.media.ExifInterface: it covers HEIF/AVIF/WebP/PNG
+  // as well as JPEG.
+  implementation "androidx.exifinterface:exifinterface:1.4.2"
+
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
 }
