@@ -1,0 +1,55 @@
+{
+  "name": "my-module",
+  "version": "0.1.0",
+  "description": "Native video composition (trim, filters, text/image overlays, audio mixing) for Expo/React Native, adapted from pro_video_editor's AVFoundation and Media3 Transformer implementation.",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "scripts": {
+    "build": "node internal/module_scripts/build.js",
+    "clean": "node internal/module_scripts/clean.js",
+    "lint": "eslint src/",
+    "test": "node internal/module_scripts/test.js",
+    "prepare": "node internal/module_scripts/prepare.js",
+    "open:ios": "node internal/module_scripts/open-ios.js",
+    "open:android": "node internal/module_scripts/open-android.js"
+  },
+  "keywords": [
+    "react-native",
+    "expo",
+    "my-module",
+    "ExpoProVideoEditor"
+  ],
+  "repository": "https://github.com/Manuel2u/expo-pro-video-editor",
+  "bugs": {
+    "url": "https://github.com/Manuel2u/expo-pro-video-editor/issues"
+  },
+  "author": "manuel2u <emmanueldodoo94@gmail.com> (https://github.com/Manuel2u)",
+  "license": "BSD-3-Clause",
+  "homepage": "https://github.com/Manuel2u/expo-pro-video-editor#readme",
+  "dependencies": {},
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@types/jest": "^29.2.1",
+    "@types/react": "~19.1.1",
+    "babel-preset-expo": "~55.0.8",
+    "eslint": "~9.39.4",
+    "eslint-config-universe": "^15.0.3",
+    "expo": "^57.0.19",
+    "jest": "^29.7.0",
+    "jest-expo": "~55.0.9",
+    "prettier": "^3.0.0",
+    "react-native": "0.82.1",
+    "typescript": "^5.9.2"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "roots": [
+      "<rootDir>/src"
+    ]
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}
