@@ -2,6 +2,7 @@ package expo.modules.provideoeditor
 
 import androidx.media3.common.util.UnstableApi
 import expo.modules.kotlin.exception.CodedException
+import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.Promise
@@ -34,6 +35,14 @@ class ExpoProVideoEditorModule : Module() {
 
     Events("onRenderProgress")
 
+    // Expo Modules API dispatches an AsyncFunction on a background queue by
+    // default. Media3's Transformer binds to whichever thread creates it and
+    // then requires every later call (including addListener from the
+    // RenderVideo pipeline's own main-Looper post) on that same thread — a
+    // Transformer built on the default background queue crashes the first
+    // time a main-thread callback touches it ("Transformer is accessed on the
+    // wrong thread"). Forcing this function onto the main queue keeps the
+    // whole render() call on the same thread Media3 expects throughout.
     AsyncFunction("render") { args: Map<String, Any?>, id: String, promise: Promise ->
       if (id.isEmpty()) {
         promise.reject(ExpoProVideoEditorException.invalidArguments("Missing task id"))
@@ -90,7 +99,7 @@ class ExpoProVideoEditorModule : Module() {
       )
 
       activeRenderHandles[id] = handle
-    }
+    }.runOnQueue(Queues.MAIN)
 
     AsyncFunction("cancelRender") { id: String, promise: Promise ->
       if (id.isEmpty()) {
@@ -107,7 +116,7 @@ class ExpoProVideoEditorModule : Module() {
       explicitlyCancelled.add(id)
       handle.cancel()
       promise.resolve(null)
-    }
+    }.runOnQueue(Queues.MAIN)
   }
 }
 
