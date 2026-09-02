@@ -86,20 +86,39 @@ public class ExpoProVideoEditorModule: Module {
 /// Errors thrown across the JS boundary. Expo Modules API converts a thrown
 /// `Exception` into a JS `Error` carrying `.code` and `.message`, the same
 /// shape `FlutterError`'s `code`/`message` gave the Flutter side.
+///
+/// `Exception`'s JS-visible message is built from `debugDescription`, which
+/// always reads its `reason` property — not the `description` passed to
+/// `Exception(name:description:code:)` (that only feeds Swift-side
+/// `CustomStringConvertible` logging). `reason` defaults to the literal
+/// string `"undefined reason"` unless overridden, so every exception here
+/// must be this subclass rather than a plain `Exception(name:description:code:)`
+/// call, or its message reaches JS as "undefined reason".
+private final class ExpoProVideoEditorException: Exception, @unchecked Sendable {
+  private let reasonMessage: String
+
+  init(name: String, reason: String, code: String) {
+    self.reasonMessage = reason
+    super.init(name: name, description: reason, code: code)
+  }
+
+  override var reason: String { reasonMessage }
+}
+
 private enum ExpoProVideoEditorError {
   static func invalidArguments(_ message: String) -> Exception {
-    Exception(name: "INVALID_ARGUMENTS", description: message, code: "INVALID_ARGUMENTS")
+    ExpoProVideoEditorException(name: "INVALID_ARGUMENTS", reason: message, code: "INVALID_ARGUMENTS")
   }
 
   static func taskAlreadyRunning(_ id: String) -> Exception {
-    Exception(
-      name: "TASK_ALREADY_RUNNING", description: "Task with id \(id) is already running",
+    ExpoProVideoEditorException(
+      name: "TASK_ALREADY_RUNNING", reason: "Task with id \(id) is already running",
       code: "TASK_ALREADY_RUNNING")
   }
 
   static func taskNotFound(_ id: String) -> Exception {
-    Exception(
-      name: "TASK_NOT_FOUND", description: "No task found for id \(id)", code: "TASK_NOT_FOUND")
+    ExpoProVideoEditorException(
+      name: "TASK_NOT_FOUND", reason: "No task found for id \(id)", code: "TASK_NOT_FOUND")
   }
 
   /// A pipeline can also cancel itself (a stalled-export watchdog, a refused
@@ -107,6 +126,6 @@ private enum ExpoProVideoEditorError {
   /// `canceled` (an explicit `cancelRender` call) is false.
   static func renderFailed(canceled: Bool, error: Error) -> Exception {
     let code = (canceled || error is CancellationError) ? "CANCELED" : "RENDER_ERROR"
-    return Exception(name: code, description: error.localizedDescription, code: code)
+    return ExpoProVideoEditorException(name: code, reason: error.localizedDescription, code: code)
   }
 }
