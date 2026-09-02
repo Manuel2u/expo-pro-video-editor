@@ -22,6 +22,27 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-video",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to record a clip.",
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone to record audio with your clip.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to pick a clip.",
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save clips to your photo library.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      "expo-image"
+    ]
   }
 }

@@ -1,6 +1,7 @@
 import ExpoProVideoEditorModule from 'expo-pro-video-editor';
 import type { RenderConfig } from 'expo-pro-video-editor';
 import { File, Paths } from 'expo-file-system';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Button, SafeAreaView, ScrollView, Text, View } from 'react-native';
 
@@ -82,6 +83,11 @@ export default function App() {
             onPress={runSmokeTest}
             disabled={busy}
           />
+        </Group>
+        <Group name="Clip flow (Figma)">
+          <Text>Media picker → editor → post, matching the Figma designs.</Text>
+          <View style={styles.spacer} />
+          <Button title="New Clip" onPress={() => router.push('/new-clip')} />
         </Group>
       </ScrollView>
     </SafeAreaView>

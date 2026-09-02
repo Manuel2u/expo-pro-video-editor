@@ -32,4 +32,10 @@ config.transformer.getTransformOptions = async () => ({
   },
 });
 
+// react-native-svg-transformer: lets `import Icon from './icon.svg'` resolve
+// to an SVG React component instead of an (unsupported) raw asset require.
+config.transformer.babelTransformerPath = require.resolve('react-native-svg-transformer');
+config.resolver.assetExts = config.resolver.assetExts.filter((ext) => ext !== 'svg');
+config.resolver.sourceExts = [...config.resolver.sourceExts, 'svg'];
+
 module.exports = config;
