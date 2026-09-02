@@ -1,5 +1,5 @@
 {
-  "name": "my-module",
+  "name": "expo-pro-video-editor",
   "version": "0.1.0",
   "description": "Native video composition (trim, filters, text/image overlays, audio mixing) for Expo/React Native, adapted from pro_video_editor's AVFoundation and Media3 Transformer implementation.",
   "main": "build/index.js",
@@ -16,8 +16,12 @@
   "keywords": [
     "react-native",
     "expo",
-    "my-module",
-    "ExpoProVideoEditor"
+    "expo-module",
+    "video-editor",
+    "video-composition",
+    "video-trim",
+    "video-filter",
+    "audio-mixing"
   ],
   "repository": "https://github.com/Manuel2u/expo-pro-video-editor",
   "bugs": {
