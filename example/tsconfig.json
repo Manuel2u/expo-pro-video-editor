@@ -3,8 +3,8 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "my-module": ["../src/index"],
-      "my-module/*": ["../src/*"]
+      "expo-pro-video-editor": ["../src/index"],
+      "expo-pro-video-editor/*": ["../src/*"]
     }
   }
 }

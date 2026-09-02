@@ -4,6 +4,8 @@
   "main": "index.ts",
   "dependencies": {
     "expo": "~57.0.19",
+    "expo-file-system": "~57.0.6",
+    "expo-linking": "~57.0.9",
     "react": "19.2.3",
     "react-native": "0.86.3"
   },

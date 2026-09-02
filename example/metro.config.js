@@ -20,7 +20,7 @@ config.resolver.nodeModulesPaths = [
 ];
 
 config.resolver.extraNodeModules = {
-  'my-module': '..',
+  'expo-pro-video-editor': '..',
 };
 
 config.watchFolders = [path.resolve(__dirname, '..')];
