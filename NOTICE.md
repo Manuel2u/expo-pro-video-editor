@@ -80,8 +80,33 @@ target (`xcodebuild ... -scheme ExpoProVideoEditor -sdk iphonesimulator build`
 this only confirms the native composition engine itself is complete and
 self-consistent.
 
-What's left before this is callable from JS is the module-glue layer:
-`ExpoProVideoEditorModule.swift`'s `AsyncFunction` definitions, replacing what
-`RenderTask` and `ProVideoEditorPlugin.swift` did for Flutter's method channel.
+## iOS module glue (JS-callable)
+
+`ExpoProVideoEditorModule.swift` now exposes `render(config, id)` and
+`cancelRender(id)` as `AsyncFunction`s, plus an `onRenderProgress` event —
+the Expo Modules API equivalent of what `ProVideoEditorPlugin.swift`'s
+`renderVideo`/`cancelTask` method-channel handlers and `RenderTask` did for
+Flutter. Not a line-for-line port (there's no Flutter plugin file to adapt
+here): `AsyncFunction`'s `Promise` argument replaces `RenderTask`'s manual
+`FlutterResult` storage/dedup, and `Module.sendEvent` replaces the
+`FlutterEventChannel`/`StreamHandler` progress-streaming plumbing — both
+handled natively by Expo instead.
+
+The render config crosses the JS boundary as a **raw dictionary** (`[String:
+Any]` on the Swift side, a plain object in TS — see `src/ExpoProVideoEditor.types.ts`),
+handed straight to the already-ported `RenderConfig.fromArguments(_:)`
+unchanged, rather than re-modeling `RenderConfig`'s large/deeply-nested shape
+as a second parallel tree of Expo `Record` structs.
+
+**Verified**: compiles clean as part of the same `ExpoProVideoEditor` pod
+target build; `tsc --noEmit` and `eslint` both clean on the TS side. Nothing
+has been exercised at runtime yet (no example-app screen calls `render` yet).
+
+## Remaining work
+
+Android (Kotlin/Media3 Transformer) has not been started. The TS-facing API
+surface for anything beyond trim/basic effects (filters, image/text overlays,
+audio mixing, transitions) is modeled in `RenderConfig` already but untested
+end-to-end.
 Then the equivalent Android port (Kotlin/Media3 Transformer), and the shared
 TypeScript API surface in `src/`.
