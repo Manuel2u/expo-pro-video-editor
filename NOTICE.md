@@ -99,14 +99,24 @@ unchanged, rather than re-modeling `RenderConfig`'s large/deeply-nested shape
 as a second parallel tree of Expo `Record` structs.
 
 **Verified**: compiles clean as part of the same `ExpoProVideoEditor` pod
-target build; `tsc --noEmit` and `eslint` both clean on the TS side. Nothing
-has been exercised at runtime yet (no example-app screen calls `render` yet).
+target build; `tsc --noEmit` and `eslint` both clean on the TS side.
+
+**Verified at runtime** on the iOS simulator via the example app's smoke-test
+screen: download a small public clip to a local file, `render()` a 3-second
+trim, resolve real output bytes (~1.9MB from a 5s/1.1MB source). This also
+caught and fixed a real bug — every error this module threw (not just render
+failures) was reaching JS as the literal string `"undefined reason"` instead
+of its actual message, because `Exception`'s JS-visible message reads its
+`reason` property (always `debugDescription`), not the `description` passed
+to `Exception(name:description:code:)`. Fixed by subclassing `Exception` to
+override `reason` — see the `fix(ios)` commit for detail.
 
 ## Remaining work
 
 Android (Kotlin/Media3 Transformer) has not been started. The TS-facing API
 surface for anything beyond trim/basic effects (filters, image/text overlays,
-audio mixing, transitions) is modeled in `RenderConfig` already but untested
-end-to-end.
+audio mixing, transitions) is modeled in `RenderConfig` already and compiles,
+but only the trim path has been exercised at runtime so far — filters, image
+layers, audio mixing, and transitions are still untested end-to-end.
 Then the equivalent Android port (Kotlin/Media3 Transformer), and the shared
 TypeScript API surface in `src/`.
