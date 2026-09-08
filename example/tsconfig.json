@@ -6,5 +6,6 @@
       "expo-pro-video-editor": ["../src/index"],
       "expo-pro-video-editor/*": ["../src/*"]
     }
-  }
+  },
+  "include": ["**/*.ts", "**/*.tsx", "../src/**/*.ts", "../src/**/*.tsx"]
 }

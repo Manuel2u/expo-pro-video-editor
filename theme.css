@@ -1,0 +1,55 @@
+/**
+ * Base design tokens for expo-pro-video-editor's exported UI components
+ * (AudioWaveform, AudioTrimScrubber, TrimScrubber, VoiceRecorder). A
+ * consuming app imports this alongside 'tailwindcss' and 'uniwind' in its
+ * own global.css, then adds an @source glob pointing at this package's
+ * source so Tailwind picks up the classNames used inside it — the same
+ * pattern panelui-native documents for its own theme.css.
+ *
+ * Every token below can be overridden by a consuming app simply by
+ * redefining the same CSS variable in its own global.css, imported after
+ * this file.
+ */
+
+@theme {
+  --color-video-editor-accent: unset;
+  --color-video-editor-accent-light: unset;
+  --color-video-editor-surface: unset;
+  --color-video-editor-bar-played: unset;
+  --color-video-editor-bar-unplayed: unset;
+  --color-video-editor-border: unset;
+  --color-video-editor-text: unset;
+  --color-video-editor-text-muted: unset;
+  /* Recording-in-progress indicator (RecordingIndicator's played-overlay
+     and playhead) — deliberately distinct from the pink trim/waveform
+     accent so an active recording reads as its own state at a glance. */
+  --color-video-editor-recording: unset;
+}
+
+@layer theme {
+  :root {
+    @variant light {
+      --color-video-editor-accent: #fe7395;
+      --color-video-editor-accent-light: #ffc2d3;
+      --color-video-editor-surface: #f2f1f1;
+      --color-video-editor-bar-played: #fe7395;
+      --color-video-editor-bar-unplayed: #9ca3af;
+      --color-video-editor-border: #e0e2e6;
+      --color-video-editor-text: #000000;
+      --color-video-editor-text-muted: #9e9b9b;
+      --color-video-editor-recording: #2dd4bf;
+    }
+
+    @variant dark {
+      --color-video-editor-accent: #fe7395;
+      --color-video-editor-accent-light: #ffc2d3;
+      --color-video-editor-surface: #232323;
+      --color-video-editor-bar-played: #fe7395;
+      --color-video-editor-bar-unplayed: #55575c;
+      --color-video-editor-border: #3a3a3a;
+      --color-video-editor-text: #ffffff;
+      --color-video-editor-text-muted: #9e9b9b;
+      --color-video-editor-recording: #2dd4bf;
+    }
+  }
+}

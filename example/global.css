@@ -1,0 +1,7 @@
+@import 'tailwindcss';
+@import 'uniwind';
+@import '../theme.css';
+@source '../src';
+@source './src';
+@source './app';
+@source './components';
