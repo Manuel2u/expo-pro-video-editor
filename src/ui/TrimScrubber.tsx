@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, PanResponder, View } from 'react-native';
 import { tv } from 'tailwind-variants';
 
+import { waitForSourceLoad } from '../utils/waitForSourceLoad';
+
 const HANDLE_WIDTH = 18;
 const STRIP_HEIGHT = 51;
 const MIN_TRIM_SECONDS = 0.5;
 const FRAME_COUNT = 12;
-const SOURCE_LOAD_TIMEOUT_MS = 8000;
 
 export type TimelineClip = {
   uri: string;
@@ -43,21 +44,6 @@ const styles = {
   }),
   handleGrip: tv({ base: 'h-[29px] w-0.5 rounded-full bg-white' }),
 };
-
-function waitForSourceLoad(player: ReturnType<typeof createVideoPlayer>): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      subscription.remove();
-      reject(new Error('Timed out waiting for sourceLoad'));
-    }, SOURCE_LOAD_TIMEOUT_MS);
-
-    const subscription = player.addListener('sourceLoad', () => {
-      clearTimeout(timeout);
-      subscription.remove();
-      resolve();
-    });
-  });
-}
 
 async function generateClipFrames(uri: string, durationSeconds: number, frameCount: number) {
   const player = createVideoPlayer(uri);

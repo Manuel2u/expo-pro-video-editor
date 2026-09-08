@@ -28,3 +28,5 @@ export { AudioTrimScrubber } from './ui/AudioTrimScrubber';
 export { TrimScrubber, type TimelineClip } from './ui/TrimScrubber';
 export { RecordingIndicator } from './ui/RecordingIndicator';
 export { VoiceRecorder, type VoiceRecorderResult, type VoiceRecorderContainer } from './ui/VoiceRecorder';
+export { useTimelineClips } from './hooks/useTimelineClips';
+export { waitForSourceLoad } from './utils/waitForSourceLoad';

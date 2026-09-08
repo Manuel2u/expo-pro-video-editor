@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { tv } from 'tailwind-variants';
 
+import { waitForSourceLoad } from '../utils/waitForSourceLoad';
+
 const STRIP_HEIGHT = 40;
 const FRAME_COUNT = 12;
-const SOURCE_LOAD_TIMEOUT_MS = 8000;
 const WAVEFORM_BAR_COUNT = 40;
 const WAVEFORM_BAR_GAP = 3;
 const WAVEFORM_MIN_BAR_HEIGHT = 3;
@@ -34,21 +35,6 @@ const styles = {
   }),
   waveformBar: tv({ base: 'rounded-full bg-video-editor-recording' }),
 };
-
-function waitForSourceLoad(player: ReturnType<typeof createVideoPlayer>): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      subscription.remove();
-      reject(new Error('Timed out waiting for sourceLoad'));
-    }, SOURCE_LOAD_TIMEOUT_MS);
-
-    const subscription = player.addListener('sourceLoad', () => {
-      clearTimeout(timeout);
-      subscription.remove();
-      resolve();
-    });
-  });
-}
 
 /** One decoded thumbnail per frame slot, generated once for the given clip. */
 function useClipFrames(uri: string | null, durationSeconds: number) {
