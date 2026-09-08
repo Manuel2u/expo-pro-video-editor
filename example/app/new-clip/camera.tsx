@@ -1,11 +1,13 @@
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '../../constants/colors';
 
 export default function CameraScreen() {
+  const insets = useSafeAreaInsets();
   const cameraRef = useRef<CameraView>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [microphonePermission, requestMicrophonePermission] = useMicrophonePermissions();
@@ -14,12 +16,7 @@ export default function CameraScreen() {
   useEffect(() => {
     if (!cameraPermission?.granted) requestCameraPermission();
     if (!microphonePermission?.granted) requestMicrophonePermission();
-  }, [
-    cameraPermission,
-    microphonePermission,
-    requestCameraPermission,
-    requestMicrophonePermission,
-  ]);
+  }, [cameraPermission, microphonePermission, requestCameraPermission, requestMicrophonePermission]);
 
   async function handleToggleRecording() {
     if (isRecording) {
@@ -41,18 +38,16 @@ export default function CameraScreen() {
 
   if (!cameraPermission?.granted || !microphonePermission?.granted) {
     return (
-      <SafeAreaView style={[styles.container, styles.centered]}>
-        <Text style={styles.permissionText}>
-          Camera and microphone access are required to record a clip.
-        </Text>
-      </SafeAreaView>
+      <View style={[styles.container, styles.centered, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <Text style={styles.permissionText}>Camera and microphone access are required to record a clip.</Text>
+      </View>
     );
   }
 
   return (
     <View style={styles.container}>
       <CameraView ref={cameraRef} style={styles.camera} mode="video" facing="back" />
-      <SafeAreaView style={styles.overlay}>
+      <View style={[styles.overlay, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => router.back()}>
             <Text style={styles.cancelText}>Cancel</Text>
@@ -63,7 +58,7 @@ export default function CameraScreen() {
             <View style={[styles.recordButton, isRecording && styles.recordButtonActive]} />
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }

@@ -1,18 +1,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useState } from 'react';
-import {
-  Alert,
-  Keyboard,
-  SafeAreaView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
-} from 'react-native';
+import { Alert, Keyboard, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import BackArrowIcon from '../../assets/icons/back-arrow.svg';
 import TagUserIcon from '../../assets/icons/tag-user.svg';
@@ -22,10 +12,11 @@ const COVER_WIDTH = 146;
 const COVER_HEIGHT = 223;
 
 export default function PostScreen() {
+  const insets = useSafeAreaInsets();
   const { uri } = useLocalSearchParams<{ uri: string }>();
   const [caption, setCaption] = useState('');
 
-  const player = useVideoPlayer(uri ?? null, (instance) => {
+  const player = useVideoPlayer(uri ?? null, instance => {
     instance.loop = true;
   });
 
@@ -46,43 +37,32 @@ export default function PostScreen() {
   }
 
   function handleSaveDraft() {
-    Alert.alert('Clip saved', 'Saved as a draft.', [
-      { text: 'OK', onPress: () => router.dismissTo('/') },
-    ]);
+    Alert.alert('Clip saved', 'Saved as a draft.', [{ text: 'OK', onPress: () => router.dismissTo('/') }]);
   }
 
   function handleShareClip() {
-    Alert.alert('Clip shared', 'Your clip has been shared.', [
-      { text: 'OK', onPress: () => router.dismissTo('/') },
-    ]);
+    Alert.alert('Clip shared', 'Your clip has been shared.', [{ text: 'OK', onPress: () => router.dismissTo('/') }]);
   }
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <SafeAreaView style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <StatusBar barStyle="dark-content" />
 
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity style={[styles.backButton, { top: insets.top }]} onPress={() => router.back()}>
           <BackArrowIcon width={16} height={16} />
         </TouchableOpacity>
         <Text style={styles.title}>New Clip</Text>
 
         <View style={styles.coverSection}>
           <TouchableOpacity activeOpacity={0.9} onPress={handlePreview}>
-            <VideoView
-              player={player}
-              style={styles.cover}
-              nativeControls={false}
-              contentFit="cover"
-            />
+            <VideoView player={player} style={styles.cover} nativeControls={false} contentFit="cover" />
           </TouchableOpacity>
           <View style={styles.coverButtonRow}>
             <TouchableOpacity style={styles.coverButton} onPress={handlePreview}>
               <Text style={styles.coverButtonText}>Preview</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.coverButton, styles.editCoverButton]}
-              onPress={handleEditCover}>
+            <TouchableOpacity style={[styles.coverButton, styles.editCoverButton]} onPress={handleEditCover}>
               <Text style={styles.coverButtonText}>Edit Cover</Text>
             </TouchableOpacity>
           </View>
@@ -110,7 +90,7 @@ export default function PostScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: 10 + insets.bottom }]}>
           <TouchableOpacity style={styles.saveDraftButton} onPress={handleSaveDraft}>
             <Text style={styles.saveDraftText}>Save Draft</Text>
           </TouchableOpacity>
@@ -118,7 +98,7 @@ export default function PostScreen() {
             <Text style={styles.shareText}>Share Clip</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     </TouchableWithoutFeedback>
   );
 }
@@ -131,7 +111,7 @@ const styles = StyleSheet.create({
   backButton: {
     position: 'absolute',
     left: 20,
-    top: 56,
+    top: 0,
     height: 40,
     width: 40,
     borderRadius: 20,
@@ -144,7 +124,7 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
   },
   title: {
-    marginTop: 56,
+    marginTop: 12,
     fontSize: 16,
     fontWeight: '600',
     color: colors.textPrimary,

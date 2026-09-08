@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import type * as MediaLibrary from 'expo-media-library/legacy';
+import { waitForSourceLoad } from 'expo-pro-video-editor';
 import { createVideoPlayer, type VideoThumbnail } from 'expo-video';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -8,29 +9,6 @@ import CameraIcon from '../../assets/icons/camera.svg';
 import { colors } from '../../constants/colors';
 
 const CELL_GAP = 1;
-const SOURCE_LOAD_TIMEOUT_MS = 8000;
-
-/**
- * `generateThumbnailsAsync` reads from "the currently played asset" — the
- * player has to finish loading the source's metadata first, which
- * `createVideoPlayer` does not wait for. Resolves once `sourceLoad` fires (or
- * rejects on timeout) so a thumbnail request right after construction doesn't
- * silently produce nothing.
- */
-function waitForSourceLoad(player: ReturnType<typeof createVideoPlayer>): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      subscription.remove();
-      reject(new Error('Timed out waiting for sourceLoad'));
-    }, SOURCE_LOAD_TIMEOUT_MS);
-
-    const subscription = player.addListener('sourceLoad', () => {
-      clearTimeout(timeout);
-      subscription.remove();
-      resolve();
-    });
-  });
-}
 
 /** One decoded first-frame thumbnail per asset, generated once per asset list. */
 function useVideoThumbnails(assets: MediaLibrary.Asset[]) {
@@ -41,23 +19,25 @@ function useVideoThumbnails(assets: MediaLibrary.Asset[]) {
 
     async function generate() {
       const results = await Promise.all(
-        assets.map(async (asset) => {
+        assets.map(async asset => {
           const player = createVideoPlayer(asset.uri);
+          let thumbnail: VideoThumbnail | null = null;
           try {
             await waitForSourceLoad(player);
-            const [thumbnail] = await player.generateThumbnailsAsync(0);
-            return { assetId: asset.id, thumbnail: thumbnail ?? null };
+            const generated = await player.generateThumbnailsAsync(0);
+            if (generated[0]) {
+              thumbnail = generated[0];
+            }
           } catch (error) {
             console.warn(`Thumbnail generation failed for ${asset.id}:`, error);
-            return { assetId: asset.id, thumbnail: null };
-          } finally {
-            player.release();
           }
+          player.release();
+          return { assetId: asset.id, thumbnail };
         }),
       );
 
       if (cancelled) return;
-      setThumbnails((prev) => {
+      setThumbnails(prev => {
         const next = { ...prev };
         for (const result of results) {
           next[result.assetId] = result.thumbnail;
@@ -89,19 +69,16 @@ export function GalleryGrid(props: {
   return (
     <View style={styles.grid}>
       <CameraCell width={cellWidth} height={cellHeight} onPress={onPressCamera} />
-      {assets.map((asset) => {
-        const selectionIndex = selectedIds.indexOf(asset.id);
-        return (
-          <AssetCell
-            key={asset.id}
-            thumbnail={thumbnails[asset.id] ?? null}
-            width={cellWidth}
-            height={cellHeight}
-            selectionOrder={selectionIndex === -1 ? null : selectionIndex + 1}
-            onPress={() => onToggleAsset(asset)}
-          />
-        );
-      })}
+      {assets.map(asset => (
+        <AssetCell
+          key={asset.id}
+          thumbnail={thumbnails[asset.id] ?? null}
+          width={cellWidth}
+          height={cellHeight}
+          isSelected={selectedIds.includes(asset.id)}
+          onPress={() => onToggleAsset(asset)}
+        />
+      ))}
     </View>
   );
 }
@@ -110,8 +87,7 @@ function CameraCell(props: { width: number; height: number; onPress: () => void 
   return (
     <TouchableOpacity
       style={[styles.cell, styles.cameraCellInner, { width: props.width, height: props.height, backgroundColor: colors.bgColor }]}
-      onPress={props.onPress}
-    >
+      onPress={props.onPress}>
       <View style={styles.cameraButtonGroup}>
         <View style={styles.cameraCircle}>
           <CameraIcon width={24} height={24} />
@@ -122,25 +98,13 @@ function CameraCell(props: { width: number; height: number; onPress: () => void 
   );
 }
 
-function AssetCell(props: {
-  thumbnail: VideoThumbnail | null;
-  width: number;
-  height: number;
-  selectionOrder: number | null;
-  onPress: () => void;
-}) {
-  const { thumbnail, width, height, selectionOrder, onPress } = props;
-  const isSelected = selectionOrder !== null;
+function AssetCell(props: { thumbnail: VideoThumbnail | null; width: number; height: number; isSelected: boolean; onPress: () => void }) {
+  const { thumbnail, width, height, isSelected, onPress } = props;
   return (
-    <TouchableOpacity
-      style={[styles.cell, { width, height, backgroundColor: colors.neutral400 }]}
-      onPress={onPress}
-    >
-      {thumbnail ? (
-        <Image source={thumbnail} style={StyleSheet.absoluteFill} contentFit="cover" />
-      ) : null}
+    <TouchableOpacity style={[styles.cell, { width, height, backgroundColor: colors.neutral400 }]} onPress={onPress}>
+      {thumbnail ? <Image source={thumbnail} style={StyleSheet.absoluteFill} contentFit="cover" /> : null}
       <View style={[styles.selectionBadge, isSelected && styles.selectionBadgeActive]}>
-        {isSelected ? <Text style={styles.selectionBadgeText}>{selectionOrder}</Text> : null}
+        {isSelected ? <Text style={styles.selectionBadgeText}>✓</Text> : null}
       </View>
       {isSelected ? <View style={styles.selectedOverlay} /> : null}
     </TouchableOpacity>

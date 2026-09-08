@@ -1,14 +1,16 @@
+import { File, Paths } from 'expo-file-system';
 import ExpoProVideoEditorModule from 'expo-pro-video-editor';
 import type { RenderConfig } from 'expo-pro-video-editor';
-import { File, Paths } from 'expo-file-system';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Button, SafeAreaView, ScrollView, Text, View } from 'react-native';
+import { Button, ScrollView, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-// Small, public, CC0 sample clip — used only to have a real local file to
-// hand to `render()` for this smoke test.
-const SAMPLE_VIDEO_URL =
-  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
+/**
+ * Small, public, CC0 sample clip — used only to have a real local file to
+ * hand to `render()` for this smoke test.
+ */
+const SAMPLE_VIDEO_URL = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
 
 type Status = { label: string; detail?: string };
 
@@ -16,6 +18,8 @@ export default function App() {
   const [status, setStatus] = useState<Status>({ label: 'idle' });
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [waveformStatus, setWaveformStatus] = useState<Status>({ label: 'idle' });
+  const [waveformBusy, setWaveformBusy] = useState(false);
 
   async function runSmokeTest() {
     setBusy(true);
@@ -23,14 +27,11 @@ export default function App() {
     setStatus({ label: 'downloading sample video…' });
 
     const jobId = `smoke-${Date.now()}`;
-    const subscription = ExpoProVideoEditorModule.addListener(
-      'onRenderProgress',
-      (event) => {
-        if (event.id === jobId) {
-          setProgress(event.progress);
-        }
-      },
-    );
+    const subscription = ExpoProVideoEditorModule.addListener('onRenderProgress', event => {
+      if (event.id === jobId) {
+        setProgress(event.progress);
+      }
+    });
 
     try {
       const source = new File(Paths.cache, 'expo-pro-video-editor-smoke-source.mp4');
@@ -41,9 +42,11 @@ export default function App() {
 
       setStatus({ label: 'rendering…' });
 
-      // `RenderConfig.inputPath` is a plain filesystem path (it's handed straight
-      // to `URL(fileURLWithPath:)` on the native side), not a `file://` URL —
-      // strip the scheme that `File.uri` includes.
+      /**
+       * `RenderConfig.inputPath` is a plain filesystem path (it's handed straight
+       * to `URL(fileURLWithPath:)` on the native side), not a `file://` URL —
+       * strip the scheme that `File.uri` includes.
+       */
       const inputPath = downloaded.uri.replace(/^file:\/\//, '');
 
       const config: RenderConfig = {
@@ -61,11 +64,38 @@ export default function App() {
       const output = await ExpoProVideoEditorModule.render(config, jobId);
       const bytes = output?.byteLength ?? 0;
       setStatus({ label: 'success', detail: `${bytes} bytes` });
-    } catch (error) {
-      setStatus({ label: 'error', detail: String(error) });
-    } finally {
       subscription.remove();
       setBusy(false);
+    } catch (error) {
+      setStatus({ label: 'error', detail: String(error) });
+      subscription.remove();
+      setBusy(false);
+    }
+  }
+
+  async function runWaveformSmokeTest() {
+    setWaveformBusy(true);
+    setWaveformStatus({ label: 'downloading sample video…' });
+
+    try {
+      const source = new File(Paths.cache, 'expo-pro-video-editor-smoke-source.mp4');
+      if (!source.exists) {
+        await File.downloadFileAsync(SAMPLE_VIDEO_URL, source);
+      }
+
+      setWaveformStatus({ label: 'extracting waveform…' });
+
+      const inputPath = source.uri.replace(/^file:\/\//, '');
+      const waveform = await ExpoProVideoEditorModule.extractWaveform(inputPath, 40);
+
+      setWaveformStatus({
+        label: 'success',
+        detail: `${waveform.length} peaks, max=${Math.max(...waveform).toFixed(3)}`,
+      });
+      setWaveformBusy(false);
+    } catch (error) {
+      setWaveformStatus({ label: 'error', detail: String(error) });
+      setWaveformBusy(false);
     }
   }
 
@@ -78,14 +108,16 @@ export default function App() {
           {status.detail ? <Text>{status.detail}</Text> : null}
           {busy ? <Text>Progress: {Math.round(progress * 100)}%</Text> : null}
           <View style={styles.spacer} />
-          <Button
-            title="Download sample clip & render 3s trim"
-            onPress={runSmokeTest}
-            disabled={busy}
-          />
+          <Button title="Download sample clip & render 3s trim" onPress={runSmokeTest} disabled={busy} />
         </Group>
-        <Group name="Clip flow (Figma)">
-          <Text>Media picker → editor → post, matching the Figma designs.</Text>
+        <Group name="Waveform smoke test">
+          <Text>Status: {waveformStatus.label}</Text>
+          {waveformStatus.detail ? <Text>{waveformStatus.detail}</Text> : null}
+          <View style={styles.spacer} />
+          <Button title="Extract waveform from sample clip" onPress={runWaveformSmokeTest} disabled={waveformBusy} />
+        </Group>
+        <Group name="Clip flow">
+          <Text>Media picker → editor → post.</Text>
           <View style={styles.spacer} />
           <Button title="New Clip" onPress={() => router.push('/new-clip')} />
         </Group>

@@ -1,11 +1,6 @@
-/**
- * Palette pulled directly from Figma's resolved variable values for the
- * "New Clip" flow (media picker / editor / post screens). The example app has
- * no design-token system of its own, so these are named constants rather
- * than scattered hex literals — not a general-purpose theme.
- */
 export const colors = {
   mainColor: '#fe7395',
+  mainColorLight: '#ffc2d3',
   stroke: '#e0e2e6',
   inputField: '#fafafa',
   textPrimary: '#000000',

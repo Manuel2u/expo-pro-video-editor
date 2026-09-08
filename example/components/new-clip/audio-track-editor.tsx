@@ -16,11 +16,7 @@ export type AudioTrackDraft = {
  * supports independent trim (audioStartUs/audioEndUs) and timeline placement
  * (startUs/endUs) for the picked file.
  */
-export function AudioTrackEditor(props: {
-  visible: boolean;
-  onCancel: () => void;
-  onConfirm: (draft: AudioTrackDraft) => void;
-}) {
+export function AudioTrackEditor(props: { visible: boolean; onCancel: () => void; onConfirm: (draft: AudioTrackDraft) => void }) {
   const { visible, onCancel, onConfirm } = props;
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -33,20 +29,22 @@ export function AudioTrackEditor(props: {
     async function load() {
       setIsLoading(true);
       setPermissionError(null);
-      try {
-        const { status } = await MediaLibrary.requestPermissionsAsync();
-        if (status !== 'granted') {
-          if (!cancelled) setPermissionError('Audio library access is required to add a track.');
-          return;
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        if (!cancelled) {
+          setPermissionError('Audio library access is required to add a track.');
+          setIsLoading(false);
         }
-        const page = await MediaLibrary.getAssetsAsync({
-          mediaType: 'audio',
-          first: 50,
-          sortBy: 'creationTime',
-        });
-        if (!cancelled) setAssets(page.assets);
-      } finally {
-        if (!cancelled) setIsLoading(false);
+        return;
+      }
+      const page = await MediaLibrary.getAssetsAsync({
+        mediaType: 'audio',
+        first: 50,
+        sortBy: 'creationTime',
+      });
+      if (!cancelled) {
+        setAssets(page.assets);
+        setIsLoading(false);
       }
     }
 
@@ -77,7 +75,7 @@ export function AudioTrackEditor(props: {
           ) : (
             <FlatList
               data={assets}
-              keyExtractor={(item) => item.id}
+              keyExtractor={item => item.id}
               style={styles.list}
               renderItem={({ item }) => (
                 <TouchableOpacity style={styles.row} onPress={() => handleSelect(item)}>

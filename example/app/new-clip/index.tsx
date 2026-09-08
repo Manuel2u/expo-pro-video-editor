@@ -1,17 +1,8 @@
 import * as MediaLibrary from 'expo-media-library/legacy';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Dimensions,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Dimensions, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import UploadIcon from '../../assets/icons/upload.svg';
 import { GalleryGrid } from '../../components/new-clip/gallery-grid';
@@ -24,6 +15,7 @@ const CELL_WIDTH = (SCREEN_WIDTH - CELL_GAP * (COLUMN_COUNT - 1)) / COLUMN_COUNT
 const CELL_HEIGHT = 180;
 
 export default function NewClipScreen() {
+  const insets = useSafeAreaInsets();
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [isResolvingAsset, setIsResolvingAsset] = useState(false);
@@ -53,30 +45,35 @@ export default function NewClipScreen() {
     };
   }, []);
 
+  /**
+   * Only one video at a time for now — the editor's preview player only
+   * ever shows clips[0], so a second selected clip would render into the
+   * final output but never appear in the live preview. Supporting a real
+   * multi-clip timeline (transitions, a scrubber spanning multiple sources,
+   * playlist preview) is real, separate work; a new selection just replaces
+   * whatever was picked before until that's built.
+   */
   function handleToggleAsset(asset: MediaLibrary.Asset) {
-    setSelectedAssets((prev) => {
-      const isSelected = prev.some((a) => a.id === asset.id);
-      if (isSelected) return prev.filter((a) => a.id !== asset.id);
-      return [...prev, asset];
+    setSelectedAssets(prev => {
+      const isSelected = prev.some(a => a.id === asset.id);
+      if (isSelected) return [];
+      return [asset];
     });
   }
 
   async function handleConfirmSelection() {
-    // The render module opens each source with a plain filesystem path, so a
-    // PHAsset reference (iOS's `ph://...` asset.uri) has to be resolved to a
-    // real local file first — `localUri` is exactly that (unlike `uri`,
-    // which `expo-video` can play directly but our own native module cannot
-    // open).
+    /**
+     * The render module opens each source with a plain filesystem path, so a
+     * PHAsset reference (iOS's `ph://...` asset.uri) has to be resolved to a
+     * real local file first — `localUri` is exactly that (unlike `uri`,
+     * which `expo-video` can play directly but our own native module cannot
+     * open).
+     */
     setIsResolvingAsset(true);
-    try {
-      const infos = await Promise.all(
-        selectedAssets.map((asset) => MediaLibrary.getAssetInfoAsync(asset))
-      );
-      const uris = infos.map((info, index) => info.localUri ?? selectedAssets[index].uri);
-      router.push({ pathname: '/new-clip/editor', params: { uris: JSON.stringify(uris) } });
-    } finally {
-      setIsResolvingAsset(false);
-    }
+    const infos = await Promise.all(selectedAssets.map(asset => MediaLibrary.getAssetInfoAsync(asset)));
+    const uris = infos.map((info, index) => info.localUri ?? selectedAssets[index].uri);
+    setIsResolvingAsset(false);
+    router.push({ pathname: '/new-clip/editor', params: { uris: JSON.stringify(uris) } });
   }
 
   function handlePressCamera() {
@@ -84,36 +81,28 @@ export default function NewClipScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="dark-content" />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>
         <Text style={styles.title}>New Clip</Text>
-        <TouchableOpacity
-          style={styles.uploadButton}
-          onPress={handleConfirmSelection}
-          disabled={selectedAssets.length === 0}>
+        <TouchableOpacity style={styles.uploadButton} onPress={handleConfirmSelection} disabled={selectedAssets.length === 0}>
           <UploadIcon width={24} height={24} opacity={selectedAssets.length === 0 ? 0.35 : 1} />
         </TouchableOpacity>
       </View>
-      {selectedAssets.length > 0 ? (
-        <Text style={styles.selectionHint}>
-          {selectedAssets.length} clip{selectedAssets.length === 1 ? '' : 's'} selected — tap the
-          upload icon to continue
-        </Text>
-      ) : null}
+      {selectedAssets.length > 0 ? <Text style={styles.selectionHint}>Clip selected — tap the upload icon to continue</Text> : null}
 
       {permissionError ? (
         <View style={styles.centerMessage}>
           <Text style={styles.permissionText}>{permissionError}</Text>
         </View>
       ) : (
-        <ScrollView>
+        <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom }}>
           <GalleryGrid
             assets={assets}
-            selectedIds={selectedAssets.map((a) => a.id)}
+            selectedIds={selectedAssets.map(a => a.id)}
             onToggleAsset={handleToggleAsset}
             onPressCamera={handlePressCamera}
             cellWidth={CELL_WIDTH}
@@ -127,7 +116,7 @@ export default function NewClipScreen() {
           <ActivityIndicator color={colors.white} size="large" />
         </View>
       ) : null}
-    </SafeAreaView>
+    </View>
   );
 }
 

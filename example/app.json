@@ -42,7 +42,13 @@
           "isAccessMediaLocationEnabled": false
         }
       ],
-      "expo-image"
+      "expo-image",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone to record voice-over audio."
+        }
+      ]
     ]
   }
 }
