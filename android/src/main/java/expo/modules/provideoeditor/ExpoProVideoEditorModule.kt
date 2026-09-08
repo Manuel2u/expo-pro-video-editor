@@ -7,6 +7,7 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.Promise
 import expo.modules.provideoeditor.src.features.render.RenderVideo
+import expo.modules.provideoeditor.src.features.render.helpers.WaveformExtractor
 import expo.modules.provideoeditor.src.features.render.models.RenderConfig
 import expo.modules.provideoeditor.src.features.render.models.RenderJobHandle
 import expo.modules.provideoeditor.src.shared.logging.PluginLog
@@ -117,6 +118,29 @@ class ExpoProVideoEditorModule : Module() {
       handle.cancel()
       promise.resolve(null)
     }.runOnQueue(Queues.MAIN)
+
+    // No .runOnQueue(Queues.MAIN) here — unlike render()/cancelRender(),
+    // this does plain MediaExtractor/MediaCodec decoding (like
+    // AudioPreRenderer), which has no Media3 Transformer thread affinity to
+    // respect. The default background queue is exactly what a blocking
+    // decode loop wants.
+    AsyncFunction("extractWaveform") { inputPath: String, bucketCount: Int, promise: Promise ->
+      if (inputPath.isEmpty()) {
+        promise.reject(ExpoProVideoEditorException.invalidArguments("Missing input path"))
+        return@AsyncFunction
+      }
+      if (bucketCount <= 0) {
+        promise.reject(ExpoProVideoEditorException.invalidArguments("bucketCount must be > 0"))
+        return@AsyncFunction
+      }
+
+      try {
+        val peaks = WaveformExtractor.extract(inputPath, bucketCount)
+        promise.resolve(peaks)
+      } catch (e: Exception) {
+        promise.reject(ExpoProVideoEditorException.waveformFailed(e))
+      }
+    }
   }
 }
 
@@ -159,5 +183,10 @@ private class ExpoProVideoEditorException(
         code, error.message ?: "Unknown render error", error
       )
     }
+
+    fun waveformFailed(error: Throwable) =
+      ExpoProVideoEditorException(
+        "WAVEFORM_ERROR", error.message ?: "Unknown waveform extraction error", error
+      )
   }
 }

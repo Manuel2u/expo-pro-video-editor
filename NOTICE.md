@@ -1,10 +1,11 @@
 # Third-Party Notices
 
 This package's native video composition engine (trim, color filters, image/GIF
-overlays, audio mixing, transitions, thumbnail/waveform generation) is adapted
-from [`pro_video_editor`](https://github.com/hm21/pro_video_editor) by Alex
-Frei, licensed under BSD-3-Clause. See `LICENSE` for the full original license
-text alongside this package's own.
+overlays, audio mixing, transitions, thumbnail generation) is adapted from
+[`pro_video_editor`](https://github.com/hm21/pro_video_editor) by Alex Frei,
+licensed under BSD-3-Clause. See `LICENSE` for the full original license text
+alongside this package's own. Waveform extraction (`extractWaveform`) is this
+package's own implementation — see "Written new for this package" below.
 
 `pro_video_editor` is a Flutter plugin. Its Dart-facing API and Flutter
 plugin-registration glue (`MethodChannel`/`Pigeon`/`EventChannel` boundary
@@ -239,6 +240,23 @@ commit for detail. No equivalent issue exists on iOS: `AVFoundation`'s
 `Transformer`-equivalent objects aren't thread-affine the same way, and the
 Expo Modules API's Swift side already runs `AsyncFunction` bodies
 consistently.
+
+## Written new for this package
+
+Not every native file is a port. `pro_video_editor` has its own waveform
+extraction (`darwin/.../shared/features/waveform/WaveformGenerator.swift`,
+`android/.../features/waveform/WaveformGenerator.kt`, each paired with a
+`WaveformConfig`/`WaveformTask` model and a streaming/chunk-map API), but this
+package's `extractWaveform` is independent code, not adapted from those files:
+
+| This package | Notes |
+| --- | --- |
+| `ios/src/features/render/helpers/WaveformExtractor.swift` | New. Streams PCM via `AVAssetReader`/`AVAssetReaderTrackOutput` and folds samples directly into per-bucket peaks as they're read, rather than `pro_video_editor`'s config/task/chunk-map layer. Reuses `MediaInfoExtractor` (ported) to locate the audio track. |
+| `android/src/main/java/expo/modules/provideoeditor/src/features/render/helpers/WaveformExtractor.kt` | New. Same peak-per-bucket approach on Android's side; demuxes via `MediaExtractor` and decodes through this codebase's existing `PcmRangeDecoder` helper rather than `pro_video_editor`'s own `WaveformGenerator.kt`/`MediaCodec` loop. |
+
+Both arrive at a similar high-level shape to `pro_video_editor`'s
+implementation (read raw PCM, fold into peak buckets) — the natural way to
+do this on each platform.
 
 ## Remaining work
 

@@ -80,6 +80,23 @@ public class ExpoProVideoEditorModule: Module {
       handle.cancel()
       promise.resolve(nil)
     }
+
+    AsyncFunction("extractWaveform") { (inputPath: String, bucketCount: Int, promise: Promise) in
+      guard bucketCount > 0 else {
+        promise.reject(ExpoProVideoEditorError.invalidArguments("bucketCount must be > 0"))
+        return
+      }
+
+      Task {
+        do {
+          let waveform = try await WaveformExtractor.extract(
+            inputPath: inputPath, bucketCount: bucketCount)
+          promise.resolve(waveform)
+        } catch {
+          promise.reject(ExpoProVideoEditorError.waveformFailed(error))
+        }
+      }
+    }
   }
 }
 
@@ -127,5 +144,10 @@ private enum ExpoProVideoEditorError {
   static func renderFailed(canceled: Bool, error: Error) -> Exception {
     let code = (canceled || error is CancellationError) ? "CANCELED" : "RENDER_ERROR"
     return ExpoProVideoEditorException(name: code, reason: error.localizedDescription, code: code)
+  }
+
+  static func waveformFailed(_ error: Error) -> Exception {
+    ExpoProVideoEditorException(
+      name: "WAVEFORM_ERROR", reason: error.localizedDescription, code: "WAVEFORM_ERROR")
   }
 }

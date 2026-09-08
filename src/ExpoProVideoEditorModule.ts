@@ -17,6 +17,16 @@ declare class ExpoProVideoEditorModule extends NativeModule<ExpoProVideoEditorMo
 
   /** Cancels the render job started with `render(..., id)`, if still running. */
   cancelRender(id: string): Promise<null>;
+
+  /**
+   * Extracts a waveform from the first audio track of `inputPath` (video or
+   * audio file), downsampled to `bucketCount` peak-amplitude values in the
+   * `0...1` range, evenly spanning the file's full duration.
+   *
+   * Rejects with `INVALID_ARGUMENTS` if `bucketCount` is not positive, or
+   * `WAVEFORM_ERROR` if the file has no audio track or cannot be read.
+   */
+  extractWaveform(inputPath: string, bucketCount: number): Promise<number[]>;
 }
 
 export default requireNativeModule<ExpoProVideoEditorModule>('ExpoProVideoEditor');
