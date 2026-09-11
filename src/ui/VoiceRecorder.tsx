@@ -13,6 +13,9 @@ const styles = {
   backdrop: tv({ base: 'flex-1 justify-end bg-black/45' }),
   sheet: tv({
     base: 'gap-4 rounded-t-2xl bg-white p-5 dark:bg-video-editor-surface',
+    variants: {
+      bare: { true: 'gap-4 bg-transparent px-5 py-0' },
+    },
   }),
   title: tv({ base: 'text-base font-semibold text-video-editor-text' }),
   errorText: tv({ base: 'text-center text-[13px] text-video-editor-text-muted' }),
@@ -98,8 +101,26 @@ export function VoiceRecorder(props: {
   };
   /** Sheet container to present in — defaults to a plain `Modal`. */
   Container?: VoiceRecorderContainer;
+  /**
+   * Set when embedding this inside a caller-provided sheet component that
+   * already supplies its own background, padding, and rounded top corners
+   * (e.g. via a custom `Container`) — drops this component's own matching
+   * styling so the two don't stack into two slightly different, visibly
+   * seamed surfaces. Leave unset for the default `Modal` presentation.
+   */
+  bare?: boolean;
 }) {
-  const { visible, onCancel, onConfirm, title = 'Voice-over', width, backgroundContent, progress, Container = DefaultContainer } = props;
+  const {
+    visible,
+    onCancel,
+    onConfirm,
+    title = 'Voice-over',
+    width,
+    backgroundContent,
+    progress,
+    Container = DefaultContainer,
+    bare = false,
+  } = props;
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
   const [recordedDurationSeconds, setRecordedDurationSeconds] = useState(0);
@@ -229,7 +250,7 @@ export function VoiceRecorder(props: {
   return (
     <Container visible={visible} onRequestClose={onCancel}>
       {backgroundContent}
-      <View className={styles.sheet()}>
+      <View className={styles.sheet({ bare })}>
         <Text className={styles.title()}>{title}</Text>
 
         {permissionError ? <Text className={styles.errorText()}>{permissionError}</Text> : null}
