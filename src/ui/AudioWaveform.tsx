@@ -54,8 +54,17 @@ export function AudioWaveform(props: {
   endSeconds: number;
   onDelete?: () => void;
   barCount?: number;
+  /**
+   * Passed through to normalizeWaveformPeaks — lower it for a track whose
+   * loudness is consistently close to its own peak (a synth/chiptune track
+   * normalizes to near-max-height bars throughout at the default 1.6,
+   * looking "filled" compared to a quieter, more dynamic recording). Has no
+   * effect on relative bar-to-bar proportions within a single file, only on
+   * how aggressively the loudest moment is pushed to full height.
+   */
+  contrastExponent?: number;
 }) {
-  const { inputPath, width, currentTime, startSeconds, endSeconds, onDelete, barCount = BAR_COUNT } = props;
+  const { inputPath, width, currentTime, startSeconds, endSeconds, onDelete, barCount = BAR_COUNT, contrastExponent } = props;
   /**
    * Keyed by the request that produced it, so a stale result is simply
    * never rendered — no separate reset-to-loading write is needed.
@@ -79,7 +88,7 @@ export function AudioWaveform(props: {
     ExpoProVideoEditorModule.extractWaveform(inputPath, barCount)
       .then(peaks => {
         if (cancelled) return;
-        setResult({ inputPath, barCount, peaks: normalizeWaveformPeaks(peaks), failureKind: 'none' });
+        setResult({ inputPath, barCount, peaks: normalizeWaveformPeaks(peaks, contrastExponent), failureKind: 'none' });
       })
       .catch(error => {
         if (cancelled) return;
@@ -95,7 +104,7 @@ export function AudioWaveform(props: {
     return () => {
       cancelled = true;
     };
-  }, [inputPath, barCount]);
+  }, [inputPath, barCount, contrastExponent]);
 
   const current = result?.inputPath === inputPath && result.barCount === barCount ? result : null;
   const peaks = current?.peaks ?? null;
