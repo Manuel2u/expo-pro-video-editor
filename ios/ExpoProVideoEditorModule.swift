@@ -97,6 +97,27 @@ public class ExpoProVideoEditorModule: Module {
         }
       }
     }
+
+    AsyncFunction("exportPhotoLibraryVideo") { (localIdentifier: String, destinationPath: String, promise: Promise) in
+      guard !localIdentifier.isEmpty else {
+        promise.reject(ExpoProVideoEditorError.invalidArguments("Missing localIdentifier"))
+        return
+      }
+      guard !destinationPath.isEmpty else {
+        promise.reject(ExpoProVideoEditorError.invalidArguments("Missing destinationPath"))
+        return
+      }
+
+      Task {
+        do {
+          try await PhotoLibraryVideoExporter.export(
+            localIdentifier: localIdentifier, to: URL(fileURLWithPath: destinationPath))
+          promise.resolve(destinationPath)
+        } catch {
+          promise.reject(ExpoProVideoEditorError.photoLibraryExportFailed(error))
+        }
+      }
+    }
   }
 }
 
@@ -149,5 +170,10 @@ private enum ExpoProVideoEditorError {
   static func waveformFailed(_ error: Error) -> Exception {
     ExpoProVideoEditorException(
       name: "WAVEFORM_ERROR", reason: error.localizedDescription, code: "WAVEFORM_ERROR")
+  }
+
+  static func photoLibraryExportFailed(_ error: Error) -> Exception {
+    let code = error is CancellationError ? "CANCELED" : "PHOTO_LIBRARY_EXPORT_ERROR"
+    return ExpoProVideoEditorException(name: code, reason: error.localizedDescription, code: code)
   }
 }

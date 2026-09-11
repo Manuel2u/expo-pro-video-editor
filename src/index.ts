@@ -23,6 +23,9 @@ export const cancelRender: typeof ExpoProVideoEditorModule.cancelRender = (id: s
 
 export const extractWaveform: typeof ExpoProVideoEditorModule.extractWaveform = (inputPath: string, bucketCount: number) =>
   ExpoProVideoEditorModule.extractWaveform(inputPath, bucketCount);
+
+export const exportPhotoLibraryVideo: typeof ExpoProVideoEditorModule.exportPhotoLibraryVideo = (localIdentifier: string, destinationPath: string) =>
+  ExpoProVideoEditorModule.exportPhotoLibraryVideo(localIdentifier, destinationPath);
 export { AudioWaveform } from './ui/AudioWaveform';
 export { AudioTrimScrubber } from './ui/AudioTrimScrubber';
 export { TrimScrubber, type TimelineClip } from './ui/TrimScrubber';

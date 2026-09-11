@@ -23,6 +23,10 @@ class ExpoProVideoEditorModule extends NativeModule<ExpoProVideoEditorModuleEven
   extractWaveform(_inputPath: string, _bucketCount: number): Promise<number[]> {
     throw new Error(UNSUPPORTED_MESSAGE);
   }
+
+  exportPhotoLibraryVideo(_localIdentifier: string, _destinationPath: string): Promise<string> {
+    throw new Error(UNSUPPORTED_MESSAGE);
+  }
 }
 
 export default registerWebModule(ExpoProVideoEditorModule, 'ExpoProVideoEditorModule');

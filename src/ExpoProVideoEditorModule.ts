@@ -27,6 +27,27 @@ declare class ExpoProVideoEditorModule extends NativeModule<ExpoProVideoEditorMo
    * `WAVEFORM_ERROR` if the file has no audio track or cannot be read.
    */
   extractWaveform(inputPath: string, bucketCount: number): Promise<number[]>;
+
+  /**
+   * Exports a photo-library video asset to a real, playable local file at
+   * `destinationPath`, using `PHImageManager.requestExportSession` — the API
+   * Apple documents for producing a genuinely exportable representation of a
+   * video asset. A `ph://` URI (or a resolved `file://` path under the
+   * Photos app's own protected storage) cannot be opened directly by
+   * AVPlayer/expo-video, and copying via `PHAssetResourceManager` has been
+   * observed failing unpredictably on some devices/OS versions even for
+   * locally-available assets — this is the more robust alternative.
+   *
+   * @param localIdentifier A `PHAsset.localIdentifier` — the part of a
+   * `ph://<localIdentifier>/L0/001` URI before the `/L0/001` suffix.
+   * @param destinationPath A `file://` path in the caller's own sandbox
+   * (e.g. its cache directory) to write the exported `.mov` file to. Any
+   * existing file at this path is overwritten.
+   * @returns The same `destinationPath`, once the file has been written.
+   *
+   * @platform ios
+   */
+  exportPhotoLibraryVideo(localIdentifier: string, destinationPath: string): Promise<string>;
 }
 
 export default requireNativeModule<ExpoProVideoEditorModule>('ExpoProVideoEditor');
