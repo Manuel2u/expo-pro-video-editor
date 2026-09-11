@@ -8,15 +8,35 @@ import { normalizeWaveformPeaks } from '../waveform';
 const HANDLE_WIDTH = 18;
 const STRIP_HEIGHT = 51;
 const MIN_TRIM_SECONDS = 0.5;
-const BAR_COUNT_PER_SECOND = 8;
 const MIN_BAR_COUNT = 90;
-const MAX_BAR_COUNT = 600;
+
+const MAX_BAR_COUNT = 2000;
 const BAR_GAP = 1;
+
+const TARGET_PX_PER_BAR = 4;
 const MIN_BAR_HEIGHT = 3;
 const MAX_BAR_HEIGHT = STRIP_HEIGHT - 10;
 const DELETE_BUTTON_SIZE = 24;
 // Width per second of audio, before scrolling kicks in.
 const PIXELS_PER_SECOND = 40;
+
+/**
+ * The exact bar-count math AudioTrimScrubber uses internally, exported so a
+ * caller that wants to pre-warm extractWaveform (matching barCount so the
+ * pre-warmed result is actually reused instead of the component silently
+ * re-extracting with a different count) can compute the same value instead
+ * of duplicating — and risking drifting out of sync with — this formula.
+ *
+ * `hasDeleteButton` should match whether the AudioTrimScrubber call passes
+ * `onDelete` (it changes the usable width, and therefore the count).
+ */
+export function computeAudioTrimBarCount(width: number, durationSeconds: number, hasDeleteButton: boolean): number {
+  const deleteButtonSpace = hasDeleteButton ? DELETE_BUTTON_SIZE + 8 : 0;
+  const scrubberWidth = width - deleteButtonSpace;
+  const contentWidth = Math.max(scrubberWidth, durationSeconds * PIXELS_PER_SECOND);
+  const usableContentWidth = contentWidth - HANDLE_WIDTH * 2;
+  return Math.min(MAX_BAR_COUNT, Math.max(MIN_BAR_COUNT, Math.round(usableContentWidth / TARGET_PX_PER_BAR)));
+}
 
 const styles = {
   row: tv({ base: 'h-[51px] flex-row items-center gap-2' }),
@@ -83,27 +103,58 @@ export function AudioTrimScrubber(props: {
   onChange: (range: { startSeconds: number; endSeconds: number }) => void;
   onDelete?: () => void;
   width: number;
+  /**
+   * Passed through to normalizeWaveformPeaks — lower it for a track whose
+   * loudness is consistently close to its own peak (a synth/chiptune track
+   * normalizes to near-max-height bars throughout at the default 1.6,
+   * looking "filled" compared to a quieter, more dynamic recording). Has no
+   * effect on relative bar-to-bar proportions within a single file, only on
+   * how aggressively the loudest moment is pushed to full height.
+   */
+  contrastExponent?: number;
+  /**
+   * Already-extracted, already-normalized peaks for this exact inputPath —
+   * pass the result of a prior extractWaveform(inputPath,
+   * computeAudioTrimBarCount(width, durationSeconds, !!onDelete)) call (run
+   * normalizeWaveformPeaks(peaks, contrastExponent) yourself first, since
+   * this skips that step too) to skip this component's own extraction
+   * entirely, so pre-warming elsewhere actually avoids a second visible
+   * loading state here rather than merely priming a cache this component
+   * doesn't share. Ignored (falls back to extracting normally) if its
+   * length doesn't match the barCount this component computes for the
+   * given width/durationSeconds/onDelete — that mismatch means it was
+   * computed differently and can't be trusted as-is.
+   */
+  initialPeaks?: number[];
 }) {
-  const { inputPath, durationSeconds, startSeconds, endSeconds, currentTime, onChange, onDelete, width } = props;
+  const { inputPath, durationSeconds, startSeconds, endSeconds, currentTime, onChange, onDelete, width, contrastExponent, initialPeaks } = props;
   const deleteButtonSpace = onDelete ? DELETE_BUTTON_SIZE + 8 : 0;
   const scrubberWidth = width - deleteButtonSpace;
-  /**
-   * Keyed by the request that produced it, so a stale result is simply
-   * never rendered — no separate reset-to-loading write is needed.
-   */
-  const [result, setResult] = useState<{ inputPath: string; barCount: number; peaks: number[] } | null>(null);
-
   const contentWidth = Math.max(scrubberWidth, durationSeconds * PIXELS_PER_SECOND);
   const usableContentWidth = contentWidth - HANDLE_WIDTH * 2;
-  const barCount = Math.min(MAX_BAR_COUNT, Math.max(MIN_BAR_COUNT, Math.round(durationSeconds * BAR_COUNT_PER_SECOND)));
+  const barCount = computeAudioTrimBarCount(width, durationSeconds, !!onDelete);
+
+  const usableInitialPeaks = initialPeaks && initialPeaks.length === barCount ? initialPeaks : null;
+
+  /**
+   * Keyed by the request that produced it, so a stale result is simply
+   * never rendered — no separate reset-to-loading write is needed. Seeded
+   * from usableInitialPeaks so a caller that already extracted this exact
+   * (inputPath, barCount) pair never sees this component's own loading
+   * state at all.
+   */
+  const [result, setResult] = useState<{ inputPath: string; barCount: number; peaks: number[] } | null>(
+    usableInitialPeaks ? { inputPath, barCount, peaks: usableInitialPeaks } : null,
+  );
 
   useEffect(() => {
+    if (usableInitialPeaks) return;
     let cancelled = false;
 
     ExpoProVideoEditorModule.extractWaveform(inputPath, barCount)
       .then(peaks => {
         if (cancelled) return;
-        setResult({ inputPath, barCount, peaks: normalizeWaveformPeaks(peaks) });
+        setResult({ inputPath, barCount, peaks: normalizeWaveformPeaks(peaks, contrastExponent) });
       })
       .catch(error => {
         console.warn(`Waveform extraction failed for ${inputPath}:`, error);
@@ -112,7 +163,7 @@ export function AudioTrimScrubber(props: {
     return () => {
       cancelled = true;
     };
-  }, [inputPath, barCount]);
+  }, [inputPath, barCount, contrastExponent, !!usableInitialPeaks]);
 
   const peaks = result?.inputPath === inputPath && result.barCount === barCount ? result.peaks : null;
 
