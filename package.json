@@ -1,6 +1,6 @@
 {
   "name": "expo-pro-video-editor",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "Native video composition (trim, filters, text/image overlays, audio mixing) for Expo/React Native, adapted from pro_video_editor's AVFoundation and Media3 Transformer implementation.",
   "main": "build/index.js",
   "types": "build/index.d.ts",
