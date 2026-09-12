@@ -79,7 +79,7 @@ const styles = {
   }),
   handleGrip: tv({ base: 'h-[29px] w-0.5 rounded-full bg-white' }),
   deleteButton: tv({
-    base: 'h-6 w-6 items-center justify-center rounded-full border-[0.5px] border-video-editor-border bg-white',
+    base: 'h-6 w-6 items-center justify-center rounded-full border-[0.5px] border-video-editor-border bg-video-editor-surface',
   }),
   deleteButtonText: tv({ base: 'text-xs text-video-editor-text' }),
 };

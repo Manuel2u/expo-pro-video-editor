@@ -32,7 +32,7 @@ const styles = {
   }),
   failedText: tv({ base: 'text-[11px] text-video-editor-text-muted' }),
   deleteButton: tv({
-    base: 'h-6 w-6 items-center justify-center rounded-full border-[0.5px] border-video-editor-border bg-white',
+    base: 'h-6 w-6 items-center justify-center rounded-full border-[0.5px] border-video-editor-border bg-video-editor-surface',
   }),
   deleteButtonText: tv({ base: 'text-xs text-video-editor-text' }),
 };
