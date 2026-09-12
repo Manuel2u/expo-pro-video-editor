@@ -78,7 +78,22 @@ enum PhotoLibraryVideoExporter {
     let sourceAsset = exportSession.asset
     if let videoTrack = sourceAsset.tracks(withMediaType: .video).first {
       let transform = videoTrack.preferredTransform
-      let isPortrait = abs(transform.b) == 1 && abs(transform.c) == 1
+      // An exact `abs(transform.b) == 1` equality check is too brittle for this: a
+      // photo-library asset's preferredTransform routinely carries a rotation that
+      // is only approximately ±90°/±270° (stabilization/lens-correction adjustments,
+      // mirrored front-camera captures, Photos-applied edits even under `.original`),
+      // so `transform.b`/`transform.c` land at e.g. 0.9998 rather than exactly 1.0.
+      // That made `isPortrait` false for real portrait footage while the layer
+      // instruction below still applied the (near-90°) rotation unconditionally —
+      // the rotated frame then landed almost entirely outside the declared
+      // (unrotated, landscape) renderSize, and AVAssetExportSession "succeeds" with
+      // a video track that composites to black. Audio isn't touched by this video
+      // composition, so it played fine while the picture stayed dark — exactly the
+      // "audio plays, video is black" symptom this exists to fix. Use the same
+      // atan2-based angle tolerance already used elsewhere in this package (see
+      // VideoTranscoder.calculateOutputSize / VideoSequenceBuilder) instead.
+      let rotationAngle = abs(atan2(transform.b, transform.a))
+      let isPortrait = rotationAngle > .pi / 4 && rotationAngle < 3 * .pi / 4
       let naturalSize = videoTrack.naturalSize
       let renderSize = isPortrait
         ? CGSize(width: naturalSize.height, height: naturalSize.width)
